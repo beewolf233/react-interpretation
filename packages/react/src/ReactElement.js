@@ -49,7 +49,7 @@ function hasValidKey(config) {
   return config.key !== undefined;
 }
 
-// this.props.key 访问给提醒
+// 使用 props.key 获取 ref 的时候自动提醒不要这么访问
 function defineKeyPropWarningGetter(props, displayName) {
   const warnAboutAccessingKey = function() {
     if (!specialPropKeyWarningShown) {
@@ -71,7 +71,7 @@ function defineKeyPropWarningGetter(props, displayName) {
   });
 }
 
-// this.props.ref 访问给提醒
+// 使用 props.ref 获取 ref 的时候自动提醒不要这么访问
 function defineRefPropWarningGetter(props, displayName) {
   const warnAboutAccessingRef = function() {
     if (!specialPropRefWarningShown) {

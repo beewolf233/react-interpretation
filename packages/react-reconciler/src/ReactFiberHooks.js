@@ -329,6 +329,7 @@ function areHookInputsEqual(
   return true;
 }
 
+// forwardRef 处理的地方
 export function renderWithHooks(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -388,6 +389,8 @@ export function renderWithHooks(
         : HooksDispatcherOnUpdate;
   }
 
+  // forwardRef((props, ref) => (<Comp {...props} forwardRef={ref} />))
+  // 将从父组件上获得的 props 和 ref 传递给匿名函数，这个匿名函数实际也是一个组件(function component)
   let children = Component(props, refOrContext);
 
   if (didScheduleRenderPhaseUpdate) {

@@ -654,20 +654,32 @@ function hideOrUnhideAllChildren(finishedWork, isHidden) {
 }
 
 function commitAttachRef(finishedWork: Fiber) {
+  // finishedWork 处理好的 FiberNode， string ref 在这之前被 coerceRef 函数处理好了
   const ref = finishedWork.ref;
   if (ref !== null) {
+    // 获取它的实例
     const instance = finishedWork.stateNode;
     let instanceToUse;
+    // 下面的 switch 可能是准备加某个功能现在预留出来的
     switch (finishedWork.tag) {
+      // 原生组件，div span ...
       case HostComponent:
+        // function getPublicInstance(instance) {
+        //   return instance;
+        // }
+        // instanceToUse === instance true
         instanceToUse = getPublicInstance(instance);
         break;
       default:
         instanceToUse = instance;
     }
     if (typeof ref === 'function') {
+      // ref 是函数由两种情况
+      // 1、string ref 返回的函数，传进去 ref 本应该指向的实例，则 `refs[stringRef] = instanceToUse`
+      // 2、ref 属性我们定义了一个函数 `r => this.xxx = r`，则 `this.xxx => instanceToUse`，这样后面就可以使用 `this.xxx` 调用该实例了
       ref(instanceToUse);
     } else {
+      // dev 时，检测对象是否包含 current 属性
       if (__DEV__) {
         if (!ref.hasOwnProperty('current')) {
           warningWithoutStack(
@@ -679,7 +691,10 @@ function commitAttachRef(finishedWork: Fiber) {
           );
         }
       }
-
+      // 传进来一个对象，则把实例赋值给 `xx.current`
+      // `React.createRef()` 返回一个对象 `{current: null}`
+      // `React.useRef()` 返回一个对象 `{current: undefined}`
+      // 给变量引用的对象的某个属性赋值，在其他作用域依然可以获取到该属性
       ref.current = instanceToUse;
     }
   }
