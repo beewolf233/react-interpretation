@@ -105,50 +105,27 @@ function coerceRef(
   current: Fiber | null,
   element: ReactElement,
 ) {
+  // mixedRef 是 function 或者 object 就直接 return 它
   let mixedRef = element.ref;
+  // 如果是字符串，则返回一个函数，这个函数会将 ref 指向的 dom 挂载在 this.refs 上
   if (
     mixedRef !== null &&
     typeof mixedRef !== 'function' &&
     typeof mixedRef !== 'object'
   ) {
-    if (__DEV__) {
-      if (returnFiber.mode & StrictMode) {
-        const componentName = getComponentName(returnFiber.type) || 'Component';
-        if (!didWarnAboutStringRefInStrictMode[componentName]) {
-          warningWithoutStack(
-            false,
-            'A string ref, "%s", has been found within a strict mode tree. ' +
-              'String refs are a source of potential bugs and should be avoided. ' +
-              'We recommend using createRef() instead.' +
-              '\n%s' +
-              '\n\nLearn more about using refs safely here:' +
-              '\nhttps://fb.me/react-strict-mode-string-ref',
-            mixedRef,
-            getStackByFiberInDevAndProd(returnFiber),
-          );
-          didWarnAboutStringRefInStrictMode[componentName] = true;
-        }
-      }
-    }
-
+    // 拥有者 就是给其它组件设置 props 的那个组件。
+    // 更正式地说，如果组件 Y 在 render() 方法是创建了组件 X，那么 Y 就拥有 X。
+    // 组件不能修改自身的 props - 它们总是与它们拥有者设置的保持一致。这是保持用户界面一致性的基本不变量。
     if (element._owner) {
       const owner: ?Fiber = (element._owner: any);
-      let inst;
+      let inst; // undefined
+      // 有 owner 就提取 owner 实例
       if (owner) {
         const ownerFiber = ((owner: any): Fiber);
-        invariant(
-          ownerFiber.tag === ClassComponent,
-          'Function components cannot have refs. ' +
-            'Did you mean to use React.forwardRef()?',
-        );
+        // owner 实例（父组件实例）
         inst = ownerFiber.stateNode;
       }
-      invariant(
-        inst,
-        'Missing owner for string ref %s. This error is likely caused by a ' +
-          'bug in React. Please file an issue.',
-        mixedRef,
-      );
+      // mixedRef 强制转换成字符串
       const stringRef = '' + mixedRef;
       // Check if previous string ref matches new string ref
       if (
@@ -159,8 +136,16 @@ function coerceRef(
       ) {
         return current.ref;
       }
+        // 重点是这个函数
       const ref = function(value) {
+        // 拿到 owner stateNode 的 refs
         let refs = inst.refs;
+        // var emptyObject = {};
+        // {
+        //   Object.freeze(emptyObject);
+        // }
+        // Component 中 this.refs = emptyObject;
+        // export const emptyRefsObject = new React.Component().refs;
         if (refs === emptyRefsObject) {
           // This is a lazy pooled frozen object, so we need to initialize.
           refs = inst.refs = {};
@@ -168,9 +153,11 @@ function coerceRef(
         if (value === null) {
           delete refs[stringRef];
         } else {
+          // 将 dom 和 this.props.refs.xxx 绑定
           refs[stringRef] = value;
         }
       };
+      // 给 ref 函数添加 _stringRef 属性为 stringRef
       ref._stringRef = stringRef;
       return ref;
     } else {
