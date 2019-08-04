@@ -49,6 +49,7 @@ function hasValidKey(config) {
   return config.key !== undefined;
 }
 
+// this.props.key 访问给提醒
 function defineKeyPropWarningGetter(props, displayName) {
   const warnAboutAccessingKey = function() {
     if (!specialPropKeyWarningShown) {
@@ -70,6 +71,7 @@ function defineKeyPropWarningGetter(props, displayName) {
   });
 }
 
+// this.props.ref 访问给提醒
 function defineRefPropWarningGetter(props, displayName) {
   const warnAboutAccessingRef = function() {
     if (!specialPropRefWarningShown) {
@@ -126,6 +128,8 @@ const ReactElement = function(type, key, ref, self, source, owner, props) {
     props: props,
 
     // Record the component responsible for creating this element.
+    // 拥有者 就是给其它组件设置 props 的那个组件。更正式地说，如果组件 Y 在 render() 方法是创建了组件 X，那么 Y 就拥有 X。
+    // 组件不能修改自身的 props - 它们总是与它们拥有者设置的保持一致。这是保持用户界面一致性的基本不变量。
     _owner: owner,
   };
 
