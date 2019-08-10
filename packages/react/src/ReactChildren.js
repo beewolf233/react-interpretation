@@ -33,6 +33,7 @@ const SUBSEPARATOR = ':';
 // 接下来我们就直接定位到 mapChildren 函数，开始阅读吧
 
 /**
+ * 把 key 中的 `=` `:` 转换成 `=0` `=2`，返回时在开头加上 `$`
  * Escape and wrap key so it is safe to use as a reactid
  *
  * @param {string} key to be escaped.
@@ -65,12 +66,23 @@ function escapeUserProvidedKey(text) {
 
 const POOL_SIZE = 10;
 const traverseContextPool = [];
+
+/**
+ * 返回一个传入参数构成的对象
+ *
+ * @param mapResult 
+ * @param keyPrefix 
+ * @param mapFunction 
+ * @param mapContext 
+ */
 function getPooledTraverseContext(
-  mapResult,
+  mapResult, // result
   keyPrefix,
   mapFunction,
   mapContext,
 ) {
+  // traverseContextPool 长度为 0 则自己构造一个对象出来，否则从 traverseContextPool pop 一个对象
+  // 再对这个对象的各个属性进行赋值
   if (traverseContextPool.length) {
     const traverseContext = traverseContextPool.pop();
     traverseContext.result = mapResult;
@@ -90,6 +102,11 @@ function getPooledTraverseContext(
   }
 }
 
+/**
+ * 将 `getPooledTraverseContext` 产生的对象加入 `traverseContextPool` 数组中，对象池 >= 10 则不用管
+ *
+ * @param traverseContext 对象池生产的一个对象
+ */
 function releaseTraverseContext(traverseContext) {
   traverseContext.result = null;
   traverseContext.keyPrefix = null;
@@ -102,12 +119,20 @@ function releaseTraverseContext(traverseContext) {
 }
 
 /**
- * @param {?*} children Children tree container.
- * @param {!string} nameSoFar Name of the key path so far.
- * @param {!function} callback Callback to invoke with each child found.
+ * 它的作用可以理解为
+ * - `children` 是可渲染节点，则调用 `mapSingleChildIntoContext` 把 children 推入 result 数组中
+ * - `children` 是数组，则再次对数组中的每个元素调用 `traverseAllChildrenImpl`，传入的 key 是最新拼接好的
+ * - `children` 是对象，则通过 `children[Symbol.iterator]` 获取到对象的迭代器 `iterator`， 将迭代的结果放到 `traverseAllChildrenImpl` 处理
+ * **函数核心作用就是通过把传入的 children 数组通过遍历摊平成单个节点，然后去执行  `mapSingleChildIntoContext`。**
+ *
+ * @param {?*} children Children tree container. `Children.map` 的第一个参数，要处理的 children
+ * @param {!string} nameSoFar Name of the key path so far. 父级 key，会一层一层拼接传递，用 : 分隔
+ * @param {!function} callback Callback to invoke with each child found. map 时 callback 是
+ * `mapSingleChildIntoContext`，`callback` 当前层级是可渲染节点会执行，`undefined`、`boolean` 会变成 `null`，`string`、`number` 或者 `$$typeof`
+ *  是 `REACT_ELEMENT_TYPE` 或者 `REACT_PORTAL_TYPE`，会调用 `mapSingleChildIntoContext` 处理
  * @param {?*} traverseContext Used to pass information throughout the traversal
- * process.
- * @return {!number} The number of children in this subtree.
+ * process. 对象池的一个对象
+ * @return {!number} The number of children in this subtree. 返回 children 的个数
  */
 function traverseAllChildrenImpl(
   children,
@@ -126,8 +151,11 @@ function traverseAllChildrenImpl(
     children = null;
   }
 
+  // 决定是否调用 callback
+  // 是可渲染的节点则为 true
   let invokeCallback = false;
 
+  // 判断是否调用，children === null、type 为可渲染的节点则 invokeCallback 为 true
   if (children === null) {
     invokeCallback = true;
   } else {
@@ -153,6 +181,7 @@ function traverseAllChildrenImpl(
       children,
       // If it's the only child, treat the name as if it was wrapped in an array
       // so that it's consistent if the number of children grows.
+      // const SEPARATOR = '.';
       nameSoFar === '' ? SEPARATOR + getComponentKey(children, 0) : nameSoFar,
     );
     return 1;
@@ -162,6 +191,7 @@ function traverseAllChildrenImpl(
   let child;
   let nextName;
   let subtreeCount = 0; // Count of children found in the current subtree.
+  // const SUBSEPARATOR = ':';
   const nextNamePrefix =
     nameSoFar === '' ? SEPARATOR : nameSoFar + SUBSEPARATOR;
 
@@ -173,10 +203,10 @@ function traverseAllChildrenImpl(
   if (Array.isArray(children)) {
     for (let i = 0; i < children.length; i++) {
       child = children[i];
-      nextName = nextNamePrefix + getComponentKey(child, i);
+      nextName = nextNamePrefix + getComponentKey(child, i); // .$dasdsa:
       subtreeCount += traverseAllChildrenImpl(
         child,
-        nextName,
+        nextName, // 不同点是 nameSoFar 变了，它会在每一层不断拼接，用 : 分隔
         callback,
         traverseContext,
       );
@@ -247,10 +277,10 @@ function traverseAllChildrenImpl(
  * entire traversal. It can be used to store accumulations or anything else that
  * the callback might find relevant.
  *
- * @param {?*} children Children tree object.
- * @param {!function} callback To invoke upon traversing each child.
- * @param {?*} traverseContext Context for traversal.
- * @return {!number} The number of children in this subtree.
+ * @param {?*} children Children tree object. 要处理的 `this.props.children`
+ * @param {!function} callback To invoke upon traversing each child. `Children.map` 的第二个参数，每个 child 的处理函数
+ * @param {?*} traverseContext Context for traversal. 返回的 result 数组
+ * @return {!number} The number of children in this subtree. Children 有多少个
  */
 function traverseAllChildren(children, callback, traverseContext) {
   if (children == null) {
@@ -261,6 +291,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 }
 
 /**
+ * 获取 key，对参数的 key 用 escape 处理，如果参数没有 key，则用 index 转换成 36 进制的字符串
  * Generate a key string that identifies a component within a set.
  *
  * @param {*} component A component that could contain a manual key.
@@ -282,12 +313,20 @@ function getComponentKey(component, index) {
   return index.toString(36);
 }
 
+/**
+ * 把 `children` 中的每个元素放到 `func` 中执行
+ *
+ * @param bookKeeping traverseContext
+ * @param child 单个可 render child
+ * @param name 这里没有用到
+ */
 function forEachSingleChild(bookKeeping, child, name) {
   const {func, context} = bookKeeping;
   func.call(context, child, bookKeeping.count++);
 }
 
 /**
+ * 调用 `traverseAllChildren` 让每个 child 都被放到 `forEachSingleChild` 中执行
  * Iterates through children that are typically specified as `props.children`.
  *
  * See https://reactjs.org/docs/react-api.html#reactchildrenforeach
@@ -295,9 +334,9 @@ function forEachSingleChild(bookKeeping, child, name) {
  * The provided forEachFunc(child, index) will be called for each
  * leaf child.
  *
- * @param {?*} children Children tree container.
- * @param {function(*, int)} forEachFunc
- * @param {*} forEachContext Context for forEachContext.
+ * @param {?*} children Children tree container. `this.props.children`
+ * @param {function(*, int)} forEachFunc 遍历函数
+ * @param {*} forEachContext Context for forEachContext. 遍历函数的上下文
  */
 function forEachChildren(children, forEachFunc, forEachContext) {
   if (children == null) {
@@ -314,10 +353,12 @@ function forEachChildren(children, forEachFunc, forEachContext) {
 }
 
 /**
- * 这个函数只有当传入的 child 是单个节点是才会调用
- * @param bookKeeping 就是我们从对象池子里取出来的东西
- * @param child 传入的节点
- * @param childKey 节点的 key
+ * 将 `child` 推入 `traverseContext` 的 result 数组中，`child` 如果是 ReactElement，则更改 key 了再推入
+ * 只有当传入的 child 是可渲染节点才会调用
+ *
+ * @param bookKeeping 就是我们从对象池子里取出来的东西，`traverseContext`
+ * @param child 传入的节点，`children`
+ * @param childKey 节点的 key，`nameSoFar`
  */
 function mapSingleChildIntoContext(bookKeeping, child, childKey) {
   const {result, keyPrefix, func, context} = bookKeeping;
@@ -358,6 +399,15 @@ function mapSingleChildIntoContext(bookKeeping, child, childKey) {
   }
 }
 
+/**
+ * 从对象池拿到对象，进行赋值，对 children 进行遍历处理，处理完释放对象回对象池
+ *
+ * @param children 要处理的 `this.props.children`
+ * @param array 返回的 result 数组
+ * @param prefix 默认前缀，最开始为 null
+ * @param func `Children.map` 的第二个参数，每个 child 的执行函数
+ * @param context `Children.map` 的第三个参数，func 处理函数执行的上下文
+ */
 function mapIntoWithKeyPrefixInternal(children, array, prefix, func, context) {
   // 这里是处理 key，不关心也没事
   let escapedPrefix = '';
@@ -386,10 +436,10 @@ function mapIntoWithKeyPrefixInternal(children, array, prefix, func, context) {
  * The provided mapFunction(child, key, index) will be called for each
  * leaf child.
  *
- * @param {?*} children Children tree container.
- * @param {function(*, int)} func The map function.
- * @param {*} context Context for mapFunction.
- * @return {object} Object containing the ordered map of results.
+ * @param {?*} children Children tree container. 要遍历的 children
+ * @param {function(*, int)} func The map function. 遍历的函
+ * @param {*} context Context for mapFunction. 执行遍历函数时的 `this` 上下文
+ * @return {object} Object containing the ordered map of results. 返回被摊平的 children。children 是 ReactElement 自动生成新的 key
  */
 function mapChildren(children, func, context) {
   if (children == null) {
@@ -402,6 +452,7 @@ function mapChildren(children, func, context) {
 }
 
 /**
+ * 计算 children 的个数，计算的是摊平后数组元素的个数
  * Count the number of children that are typically specified as
  * `props.children`.
  *
@@ -415,6 +466,7 @@ function countChildren(children) {
 }
 
 /**
+ * 是 `mapChildren(children, child => child, context)` 版本
  * Flatten a children object (typically specified as `props.children`) and
  * return an array with appropriately re-keyed children.
  *
