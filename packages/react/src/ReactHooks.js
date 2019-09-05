@@ -28,6 +28,13 @@ function resolveDispatcher() {
   return dispatcher;
 }
 
+/**
+ * useContext
+ * @param Context {ReactContext} createContext 返回的结果
+ * @param unstable_observedBits {number | boolean | void} 计算新老 context 变化相关的，
+ * useContext() second argument is reserved for future
+ * @returns {*} 返回的是 context 的值
+ */
 export function useContext<T>(
   Context: ReactContext<T>,
   unstable_observedBits: number | boolean | void,
